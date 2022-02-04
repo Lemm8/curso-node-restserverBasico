@@ -1,41 +1,86 @@
 const { response, request } = require('express');
+const Usuario = require('../models/usuario');
+
+const { encriptarContrasena } = require('../helpers/encriptar')
 
 // GET
 const getUsuarios = (req = request, res = response) => {
 
-    const { q, nombre = 'No Name', apikey, page = 1, limit } = req.query;
+    let page = 1;
+    let itemsPerPage = 5;
 
-    res.json({
-        msg: 'get API - Controlador',
-        q, 
-        nombre, 
-        apikey,
-        page, 
-        limit
+    if ( req.query.page ) {
+        page = Number( req.query.page );
+    }
+
+    if ( req.query.limit ) {
+        itemsPerPage = Number( req.query.limit );
+    }
+
+    Usuario.paginate( { estado: true }, { page: page, limit: itemsPerPage, sort: '_id' }, ( err, usuarios ) => {
+        if ( err ) return res.status( 500 ).send({
+            status: 500,
+            msg: 'Error en el servidor'
+        });
+
+        if ( !usuarios ) return res.status( 404 ).send({
+            status: 500,
+            msg: 'No se han encontrado usuarios en la búsqueda'
+        })
+
+        let data = {
+            usuarios: usuarios.docs,
+            totalUsuarios: usuarios.total,
+            currentPage: usuarios.page,
+            totalPages: usuarios.pages
+        }
+
+        res.status( 200 ).send({
+            status: 200,
+            data
+        });
+
     });
 }
 
 // POST
-const postUsuarios = (req, res = response) => {
+const postUsuarios = async (req, res = response) => {
 
-    const { nombre, edad } = req.body;
+    // OBTENER CAMPOS OBLIGATORIOS
+    const { nombre, correo, contrasena, rol } = req.body;
+    // INSTANCIA DEL MODELO USUARIO MONGOOSE
+    const usuario = new Usuario({ nombre, correo, contrasena, rol });    
+
+    // ENCRIPTAR CONTRASEÑA 
+    usuario.contrasena = encriptarContrasena( contrasena );
+
+
+    // GUARDAR BD
+    await usuario.save();
 
     res.json({
-        msg: 'post API -Controlador',
-        nombre, 
-        edad
+        msg: 'Usuario creado',
+        usuario
     });
 }
 
 
 // PUT
-const putUsuarios = (req, res = response) => {
+const putUsuarios = async (req, res = response) => {
 
-    const id = req.params.id;
+    const { id } = req.params;
+    const { _id, contrasena, google, correo, ...info } = req.body;
+
+    // TODO: VALIDAR CONTRA BASE DE DATOS
+    if ( contrasena ) {
+        info.contrasena = encriptarContrasena( contrasena );
+    }
+
+    const usuario = await Usuario.findByIdAndUpdate( id, info, { new: true } );
 
     res.json({
-        msg: 'put API - Controlador', 
-        id
+        msg: 'Usuario actualizado', 
+        usuario
     });
 }
 
@@ -53,14 +98,22 @@ const patchUsuarios = (req, res = response) => {
 
 
 // DELETE
-const deleteUsuarios = (req, res = response) => {
+const deleteUsuarios = async (req, res = response) => {
 
-    const id = req.params.id;
+    const { id } = req.params;
 
+    // BORRAR FISICAMENTE
+    // const usuario = await Usuario.findByIdAndDelete( id );
+    // res.json({
+    //     usuario
+    // });
+
+    // BORRAR ( CAMBIAR ESTADO )
+    const usuario = await Usuario.findByIdAndUpdate( id, { estado: false } );
     res.json({
-        msg: 'delete API - Controlador',
-        id
-    });
+        usuario
+    })
+    
 }
 
 
